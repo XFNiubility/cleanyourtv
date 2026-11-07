@@ -63,7 +63,8 @@ def lanes(q, package, names, t0, t1):
         elif name == "RenderThread":
             utid = render
         else:
-            rows = q(f"select utid from thread where upid = {upid} and name = '{name}' order by utid limit 1")
+            sql_name = name.replace("'", "''")
+            rows = q(f"select utid from thread where upid = {upid} and name = '{sql_name}' order by utid limit 1")
             utid = rows[0]["utid"] if rows else None
         if utid is None:
             out.append((name, []))
@@ -188,7 +189,10 @@ def draw(panels, rx, title, subtitle, out, width=1600):
                     d.text((x0 + 3, yy + 1), text, fill="white" if s["id"] in hit else "#222", font=small)
             y += h + 26
         y += 10
-    im.save(out)
+    try:
+        im.save(out)
+    except OSError as e:
+        sys.exit(f"cannot write {out}: {e.strerror or e}")
     return im.size
 
 
@@ -248,7 +252,7 @@ def parse(argv):
     except re.error as e:
         p.error(f"--highlight is not a regex: {e}")
     names = [n.strip() for n in args.threads.split(",") if n.strip()]
-    if not names or not all(re.fullmatch(r"[A-Za-z0-9 _.:#-]+", n) for n in names):
+    if not names or not all(n.isprintable() and ";" not in n for n in names):
         p.error("--threads takes thread names such as main,RenderThread")
     args.thread_names = names
     return args

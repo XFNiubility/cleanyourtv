@@ -24,9 +24,13 @@ written on 1 or 2: the theme stays as it was.
 """
 import argparse
 import datetime
+import http.client
 import json
+import os
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -183,6 +187,17 @@ def main():
         return refuse(f"could not reach Jolpica at {endpoint} ({getattr(e, 'reason', e)}). Nothing was "
                       f"written: this is the one step that goes online, so check the connection - a "
                       f"proxy or a captive portal is the usual cause - and run it again.")
+    except (ConnectionError, http.client.HTTPException) as e:
+        # The two shapes urllib does not wrap: a connection closed before a status line
+        # (http.client.RemoteDisconnected) and a body that stops early (IncompleteRead, raised out of
+        # json.load()) come from http.client itself, so they passed every handler above and ended the
+        # run in a traceback with exit 1 - the code this script keeps for "no race left this season".
+        # A captive portal, a proxy that filters the host and a link that drops all do this; the fetch
+        # is the one step here that depends on someone else's network.
+        return refuse(f"Jolpica closed the connection before the answer was complete ({e}) for "
+                      f"{endpoint}. Nothing was written: this is the one step that goes online, so "
+                      f"check the connection - a proxy, a captive portal or a filtered network is the "
+                      f"usual cause - and run it again.")
     except ValueError as e:
         return refuse(f"Jolpica answered something that is not JSON ({e}) for {endpoint}. Nothing was "
                       f"written: this is usually a proxy or a login page answering instead of the API, "
@@ -220,16 +235,37 @@ def main():
         return 1
     theme["race_calendar"] = races
     text = json.dumps(theme, indent=2, ensure_ascii=False) + "\n"
-    # The write is the other half of the same file, and a write that could not start (a read-only
-    # checkout, a folder of another user's, config.json a symlink into a folder that is not there) used
-    # to be an OSError traceback with exit 1, after the fetch - so a run that did nothing reported the
-    # code this script keeps for an answer.
+    # Stage beside the actual target: a failed write must leave the theme alone, and a symlinked
+    # config.json must still update its target without replacing the link itself.
+    published = False
     try:
-        config.write_text(text, encoding="utf-8")
+        try:
+            target = config
+            if config.is_symlink():
+                try:
+                    target = config.resolve(strict=True)
+                except FileNotFoundError:
+                    target = config.resolve()
+        except RuntimeError as e:   # Path.resolve() reports symlink loops this way before Python 3.13.
+            raise OSError(str(e)) from e
+        if target.is_file():
+            # Check write permission without truncation; rename alone can bypass a read-only file.
+            with target.open("r+", encoding="utf-8"):
+                pass
+        with tempfile.TemporaryDirectory(prefix=".race-calendar-", dir=target.parent) as staging:
+            part = Path(staging) / target.name
+            part.write_text(text, encoding="utf-8")
+            if target.is_file():
+                shutil.copymode(target, part)
+            os.replace(part, target)
+            published = True
     except OSError as e:
-        return refuse(f"could not write {config} ({e.strerror or e}). The {response_season} calendar was "
-                      f"fetched but is not in the theme: check the folder's permissions, or move what is "
-                      f"at that path aside, and run it again.")
+        if not published:
+            return refuse(f"could not write {config} ({e.strerror or e}). The {response_season} calendar was "
+                          f"fetched but is not in the theme: check the folder's permissions, or move what is "
+                          f"at that path aside, and run it again.")
+        print(f"warning: the {response_season} calendar is in {config}, but its staging folder {staging} "
+              f"could not be cleaned up ({e.strerror or e}).", file=sys.stderr)
     first = races[0]
     print(f"{len(races)} races from the {response_season} season -> {config}")
     print(f"next: round {first['round']} {first['name']}, race {first['sessions'][-1]['start']}")

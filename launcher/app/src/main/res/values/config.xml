@@ -141,6 +141,12 @@
          the helper's own. Leave it off where a tap is one step. A theme can set it ("consume_volume_keys"). -->
     <bool name="consume_volume_keys">false</bool>
 
+    <!-- true: Channel Up/Down do nothing while Home is in front. Unhandled, they open the TV's Live TV app (Sony
+         BRAVIA, Android 9: com.sony.dtv.tvx), which is a stray press on a set nobody watches broadcast on. Inside any
+         other app the keys go on as before, and no key helper is needed. A theme can set it
+         ("home_ignore_channel_keys"). -->
+    <bool name="home_ignore_channel_keys">false</bool>
+
     <!-- Vendor source numbers for the Inputs menu, "HW<n>=<number>" by the framework input id's last part
          (`tools/tv.py 'dumpsys tv_input'` lists them). A mapped input opens by sending input_action with the
          number as the int extra "input"; "HW<n>=-" leaves a port the board reports but the set does not have
@@ -359,6 +365,11 @@
          whose state the TV cannot be trusted with stays. Off by default: every input is listed. Can also be set
          with "inputs_connected_only" in a theme. -->
     <bool name="inputs_connected_only">false</bool>
+    <!-- Only CEC device rows in the Inputs list show a connection state ("Steam Deck · HDMI 1  Connected"); bare HDMI
+         ports show none. For TVs whose port states land on the wrong port: TCL UnionTV (Android 9) reports the empty
+         HDMI 1 as connected and a device on HDMI 2 nowhere, while its CEC device list stays right. A device without
+         CEC then shows no state at all. Off by default. Can also be set with "inputs_cec_state_only" in a theme. -->
+    <bool name="inputs_cec_state_only">false</bool>
     <!-- Names under every tile, not only the focused one: unfocused names stay dimmed, the focused one is full white.
          With dock_row the band grows down to hold the dock's names too. -->
     <bool name="always_show_names">false</bool>
